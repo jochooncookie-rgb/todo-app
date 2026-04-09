@@ -527,18 +527,114 @@
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* ════════════════════════════════════════════
-       반응형
+       하단 탭바 (모바일 전용 — 데스크톱에선 숨김)
+    ════════════════════════════════════════════ */
+    #mobile-tabs {
+      display: none;
+    }
+
+    /* ════════════════════════════════════════════
+       반응형: 860px 이하 → 탭 전환 모드
     ════════════════════════════════════════════ */
     @media (max-width: 860px) {
-      #layout { flex-direction: column; height: auto; overflow: visible; }
-      #panel-calendar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
-      #cal-grid { max-height: 380px; }
-      #panel-todos { overflow-y: visible; }
-      #section-dashboard { grid-template-columns: 1fr; }
+      /* 레이아웃: 세로 스택, 화면 전체 높이 */
+      #layout {
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+        padding-bottom: 64px; /* 탭바 높이만큼 여백 */
+      }
+
+      /* 각 패널은 전체 화면을 차지하되 숨겨짐 */
+      #panel-calendar,
+      #panel-todos {
+        position: absolute;
+        inset: 0 0 64px 0;
+        width: 100%;
+        min-width: unset;
+        border: none;
+        overflow-y: auto;
+        transition: opacity 0.2s, transform 0.2s;
+        background: var(--bg);
+      }
+
+      /* 비활성 패널: 숨김 */
+      #panel-calendar.tab-hidden,
+      #panel-todos.tab-hidden {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(8px);
+      }
+
+      /* 활성 패널 */
+      #panel-calendar:not(.tab-hidden),
+      #panel-todos:not(.tab-hidden) {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+        z-index: 1;
+      }
+
+      /* 달력 패널 안쪽 조정 */
+      #panel-calendar {
+        display: flex;
+        flex-direction: column;
+      }
+      #cal-grid { flex: 1; overflow-y: auto; }
+
+      /* 할일 패널 */
+      #panel-todos {
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+      }
+
+      #section-dashboard { grid-template-columns: 1fr 1fr; }
+
+      /* 하단 탭바 표시 */
+      #mobile-tabs {
+        display: flex;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        height: 64px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        z-index: 100;
+        box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+      }
+      .mob-tab {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        font-weight: 500;
+        transition: color 0.15s, background 0.15s;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .mob-tab .tab-icon { font-size: 1.4rem; line-height: 1; }
+      .mob-tab.active {
+        color: var(--primary);
+        background: color-mix(in srgb, var(--primary) 6%, transparent);
+      }
+      .mob-tab.active .tab-icon { transform: scale(1.1); }
+
+      /* 토스트 탭바 위로 */
+      #toast { bottom: 80px; }
     }
+
     @media (max-width: 480px) {
       #section-input { flex-direction: column; }
       #btn-add, #input-category { width: 100%; }
+      #section-dashboard { grid-template-columns: 1fr; }
+      .date-range-wrap input[type="date"] { width: 100px; }
     }
   </style>
 </head>
@@ -667,6 +763,18 @@
 </div>
 
 <div id="toast"></div>
+
+<!-- 모바일 하단 탭바 -->
+<nav id="mobile-tabs">
+  <button class="mob-tab active" data-tab="calendar">
+    <span class="tab-icon">📅</span>
+    <span>달력</span>
+  </button>
+  <button class="mob-tab" data-tab="todos">
+    <span class="tab-icon">✅</span>
+    <span>할 일</span>
+  </button>
+</nav>
 
 <script>
   /* ── 상수 / 상태 ───────────────────────────────────────────── */
@@ -1306,6 +1414,38 @@
   document.getElementById('today-date').textContent = todayFull();
   todos = loadTodos();
   renderTodos();
+
+  /* ── 모바일 탭 전환 ─────────────────────────────────────────── */
+  function isMobile() { return window.innerWidth <= 860; }
+
+  function switchTab(tab) {
+    const calPanel  = document.getElementById('panel-calendar');
+    const todoPanel = document.getElementById('panel-todos');
+    document.querySelectorAll('.mob-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    if (tab === 'calendar') {
+      calPanel.classList.remove('tab-hidden');
+      todoPanel.classList.add('tab-hidden');
+    } else {
+      todoPanel.classList.remove('tab-hidden');
+      calPanel.classList.add('tab-hidden');
+    }
+  }
+
+  document.getElementById('mobile-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.mob-tab');
+    if (!btn) return;
+    switchTab(btn.dataset.tab);
+  });
+
+  // 달력 날짜 클릭 시 모바일에서 할일 탭으로 자동 이동
+  document.getElementById('cal-grid').addEventListener('click', () => {
+    if (isMobile()) setTimeout(() => switchTab('todos'), 150);
+  });
+
+  // 초기화: 모바일이면 달력 탭부터 시작
+  if (isMobile()) switchTab('calendar');
 
   // 서비스워커 등록 (PWA 오프라인 지원)
   if ('serviceWorker' in navigator) {
